@@ -88,7 +88,7 @@ router.get("/", async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
+ *           format: ObjectId
  *     responses:
  *       200:
  *         description: Success
@@ -173,7 +173,7 @@ router.post("/", async (req, res) => {
  *         name: id
  *         required: true
  *         schema:
- *           type: string
+ *           type: ObjectId
  *     requestBody:
  *       required: true
  *       content:
@@ -225,7 +225,7 @@ router.put("/:id", async (req, res) => {
  *         name: id
  *         required: true
  *         schema:
- *           type: string
+ *           type: ObjectId
  *     responses:
  *       200:
  *         description: Client deleted successfully.
