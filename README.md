@@ -14,3 +14,8 @@ This project uses feature branches. Create a branch using this convention:
 ```
 your-name/feature-name
 ```
+
+## Description of the database models
+- Client (*Client.js*) → Basic schema with *name* and *email* (unique).
+- Order (*Order.js*) → Orders reference a *client* (*clientId*), contain *items* (each referencing *productId*), calculate *totalPrice*, and track *status* (*pending*, *shipped*, *delivered*, *canceled*).
+- Product (*Product.js*) → Simple model with *name* and *price*.
