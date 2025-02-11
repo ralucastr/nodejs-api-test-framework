@@ -41,7 +41,6 @@ const Product = require("../models/Product");
 router.get("/", async (req, res) => {
     try {
         let { page = 1, limit = 10, status } = req.query;
-
         page = parseInt(page);
         limit = parseInt(limit);
 
@@ -52,20 +51,27 @@ router.get("/", async (req, res) => {
         const orders = await Order.find(query)
             .skip((page - 1) * limit)
             .limit(limit)
-            .populate("clientId", "name email") // 👈 Populate client info
-            .populate("items.productId", "name price") // 👈 Populate product details
-            .select("-__v");
+            .populate("clientId", "name email")
+            .populate("items.productId", "name price")
+            .select("-__v")
+            .lean();
 
-        res.json({
-            total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit),
-            data: orders,
+        orders.forEach(order => {
+            order.id = order._id;
+            order.client = order.clientId;
+            if (order.client) {
+                order.client.id = order.client._id;
+                delete order.client._id;
+            }
+            delete order.clientId;
         });
+        orders.forEach(order => delete order._id);
+
+
+        res.json({ total, page, limit, totalPages: Math.ceil(total / limit), data: orders });
     } catch (err) {
-        console.error("Error fetching orders:", err);
-        res.status(500).json({ message: "Error fetching orders", error: err.message });    }
+        res.status(500).json({ message: "Error fetching orders", error: err.message });
+    }
 });
 
 /**
@@ -91,10 +97,12 @@ router.get("/:id", async (req, res) => {
         const order = await Order.findById(req.params.id)
             .populate("clientId", "name email")
             .populate("items.productId", "name price")
-            .select("-__v");
+            .select("-__v")
+            .lean();
 
         if (!order) return res.status(404).json({ message: "Order not found" });
-
+        order.id = order._id;
+        delete order._id;
         res.json(order);
     } catch (err) {
         res.status(400).json({ message: "Invalid ID format" });
@@ -105,7 +113,7 @@ router.get("/:id", async (req, res) => {
  * @swagger
  * /orders:
  *   post:
- *     summary: Create a new order
+ *     summary: Create a new order with automatic price calculation
  *     tags: [Orders]
  *     requestBody:
  *       required: true
@@ -128,26 +136,30 @@ router.get("/:id", async (req, res) => {
  *                     quantity:
  *                       type: integer
  *                       description: Quantity of the product.
- *               totalPrice:
- *                 type: number
- *                 description: Total price of the order.
  *     responses:
  *       201:
  *         description: Order created successfully.
  */
 router.post("/", async (req, res) => {
     try {
-        const { clientId, items, totalPrice } = req.body;
+        const { clientId, items } = req.body;
 
         const clientExists = await Client.findById(clientId);
         if (!clientExists) return res.status(400).json({ message: "Invalid client ID" });
+
+        let totalPrice = 0;
+        for (let item of items) {
+            const product = await Product.findById(item.productId);
+            if (!product) return res.status(400).json({ message: `Invalid product ID: ${item.productId}` });
+            totalPrice += product.price * item.quantity;
+        }
 
         const newOrder = new Order({ clientId, items, totalPrice });
         await newOrder.save();
 
         res.status(201).json(newOrder);
     } catch (err) {
-        res.status(400).json({ message: "Error creating order" });
+        res.status(400).json({ message: "Error creating order", error: err.message });
     }
 });
 
@@ -155,7 +167,7 @@ router.post("/", async (req, res) => {
  * @swagger
  * /orders/{id}:
  *   put:
- *     summary: Update an order status
+ *     summary: Update an order
  *     tags: [Orders]
  *     parameters:
  *       - in: path
@@ -170,24 +182,86 @@ router.post("/", async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               status:
- *                 type: string
- *                 enum: [pending, shipped, delivered, canceled]
- *                 description: New order status.
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     productId:
+ *                       type: string
+ *                     quantity:
+ *                       type: integer
  *     responses:
  *       200:
  *         description: Order updated successfully.
  */
 router.put("/:id", async (req, res) => {
     try {
-        const { status } = req.body;
-        const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
-
+        const { items } = req.body;
+        let totalPrice = 0;
+        for (let item of items) {
+            const product = await Product.findById(item.productId);
+            if (!product) return res.status(400).json({ message: `Invalid product ID: ${item.productId}` });
+            totalPrice += product.price * item.quantity;
+        }
+        const order = await Order.findByIdAndUpdate(req.params.id, { items, totalPrice }, { new: true });
         if (!order) return res.status(404).json({ message: "Order not found" });
-
         res.json(order);
     } catch (err) {
-        res.status(400).json({ message: "Invalid ID format" });
+        res.status(400).json({ message: "Error updating order", error: err.message });
+    }
+});
+
+/**
+ * @swagger
+ * /orders/{id}/cancel:
+ *   patch:
+ *     summary: Cancel an order
+ *     tags: [Orders]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Order canceled successfully.
+ */
+router.patch("/:id/cancel", async (req, res) => {
+    try {
+        const order = await Order.findByIdAndUpdate(req.params.id, { status: "canceled" }, { new: true });
+        if (!order) return res.status(404).json({ message: "Order not found" });
+        res.json(order);
+    } catch (err) {
+        res.status(400).json({ message: "Error canceling order", error: err.message });
+    }
+});
+
+/**
+ * @swagger
+ * /clients/{clientId}/orders:
+ *   get:
+ *     summary: Get all orders for a specific client
+ *     tags: [Orders]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.get("/clients/:clientId/orders", async (req, res) => {
+    try {
+        const orders = await Order.find({ clientId: req.params.clientId })
+            .populate("items.productId", "name price")
+            .select("-__v");
+        res.json(orders);
+    } catch (err) {
+        res.status(400).json({ message: "Error fetching client orders", error: err.message });
     }
 });
 
