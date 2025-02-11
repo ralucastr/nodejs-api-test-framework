@@ -1,6 +1,7 @@
 const express = require("express");
 const Client = require("../models/Client");
 const router = express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
 
 /**
  * @swagger
@@ -40,7 +41,7 @@ const router = express.Router();
  *       200:
  *         description: Success
  */
-router.get("/", async (req, res) => {
+router.get("/", authMiddleware, async (req, res) => {
     try {
         let { page = 1, limit = 10, name, email } = req.query;
 
@@ -97,7 +98,7 @@ router.get("/", async (req, res) => {
  *       400:
  *         description: Invalid ID format
  */
-router.get("/:id", async (req, res) => {
+router.get("/:id", authMiddleware, async (req, res) => {
     try {
         const client = await Client.findById(req.params.id).select("-__v");
         if (!client) return res.status(404).json({ message: "Client not found" });
@@ -141,7 +142,7 @@ router.get("/:id", async (req, res) => {
  *       500:
  *         description: Internal server error.
  */
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
     try {
         const { name, email } = req.body;
 
@@ -195,7 +196,7 @@ router.post("/", async (req, res) => {
  *       404:
  *         description: Client not found.
  */
-router.put("/:id", async (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
     try {
         const { name, email } = req.body;
         const updatedClient = await Client.findByIdAndUpdate(req.params.id, { name, email }, { new: true });
@@ -232,7 +233,7 @@ router.put("/:id", async (req, res) => {
  *       404:
  *         description: Client not found.
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
     try {
         const deletedClient = await Client.findByIdAndDelete(req.params.id);
         if (!deletedClient) {

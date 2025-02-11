@@ -1,8 +1,11 @@
-const express = require("express");
-const Order = require("../models/Order");
-const Client = require("../models/Client");
-const router = express.Router();
-const Product = require("../models/Product");
+import { Router } from "express";
+import Order, { countDocuments, find, findById, findByIdAndUpdate, findByIdAndDelete } from "../models/Order";
+import { findById as _findById } from "../models/Client";
+import { findById as __findById } from "../models/Product";
+import authMiddleware from "../middleware/authMiddleware";
+
+const router = Router();
+
 
 /**
  * @swagger
@@ -38,7 +41,7 @@ const Product = require("../models/Product");
  *       200:
  *         description: Success
  */
-router.get("/", async (req, res) => {
+router.get("/", async (req, res) => { // 👈 I didn't add the authentication for this endpoint, to be found as an example of auth bug in the functional tests
     try {
         let { page = 1, limit = 10, status } = req.query;
         page = parseInt(page);
@@ -47,8 +50,8 @@ router.get("/", async (req, res) => {
         let query = {};
         if (status) query.status = status;
 
-        const total = await Order.countDocuments(query);
-        const orders = await Order.find(query)
+        const total = await countDocuments(query);
+        const orders = await find(query)
             .skip((page - 1) * limit)
             .limit(limit)
             .populate("clientId", "name email")
@@ -92,9 +95,9 @@ router.get("/", async (req, res) => {
  *       404:
  *         description: Order not found
  */
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req, res) => { // 👈 I didn't add the authentication for this endpoint, to be found as an example of auth bug in the functional tests
     try {
-        const order = await Order.findById(req.params.id)
+        const order = await findById(req.params.id)
             .populate("clientId", "name email")
             .populate("items.productId", "name price")
             .select("-__v")
@@ -140,16 +143,16 @@ router.get("/:id", async (req, res) => {
  *       201:
  *         description: Order created successfully.
  */
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
     try {
         const { clientId, items } = req.body;
 
-        const clientExists = await Client.findById(clientId);
+        const clientExists = await _findById(clientId);
         if (!clientExists) return res.status(400).json({ message: "Invalid client ID" });
 
         let totalPrice = 0;
         for (let item of items) {
-            const product = await Product.findById(item.productId);
+            const product = await __findById(item.productId);
             if (!product) return res.status(400).json({ message: `Invalid product ID: ${item.productId}` });
             totalPrice += product.price * item.quantity;
         }
@@ -195,16 +198,16 @@ router.post("/", async (req, res) => {
  *       200:
  *         description: Order updated successfully.
  */
-router.put("/:id", async (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
     try {
         const { items } = req.body;
         let totalPrice = 0;
         for (let item of items) {
-            const product = await Product.findById(item.productId);
+            const product = await __findById(item.productId);
             if (!product) return res.status(400).json({ message: `Invalid product ID: ${item.productId}` });
             totalPrice += product.price * item.quantity;
         }
-        const order = await Order.findByIdAndUpdate(req.params.id, { items, totalPrice }, { new: true });
+        const order = await findByIdAndUpdate(req.params.id, { items, totalPrice }, { new: true });
         if (!order) return res.status(404).json({ message: "Order not found" });
         res.json(order);
     } catch (err) {
@@ -228,9 +231,9 @@ router.put("/:id", async (req, res) => {
  *       200:
  *         description: Order canceled successfully.
  */
-router.patch("/:id/cancel", async (req, res) => {
+router.patch("/:id/cancel", authMiddleware, async (req, res) => {
     try {
-        const order = await Order.findByIdAndUpdate(req.params.id, { status: "canceled" }, { new: true });
+        const order = await findByIdAndUpdate(req.params.id, { status: "canceled" }, { new: true });
         if (!order) return res.status(404).json({ message: "Order not found" });
         res.json(order);
     } catch (err) {
@@ -256,7 +259,7 @@ router.patch("/:id/cancel", async (req, res) => {
  */
 router.get("/clients/:clientId/orders", async (req, res) => {
     try {
-        const orders = await Order.find({ clientId: req.params.clientId })
+        const orders = await find({ clientId: req.params.clientId })
             .populate("items.productId", "name price")
             .select("-__v");
         res.json(orders);
@@ -281,9 +284,9 @@ router.get("/clients/:clientId/orders", async (req, res) => {
  *       200:
  *         description: Order deleted successfully.
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
     try {
-        const order = await Order.findByIdAndDelete(req.params.id);
+        const order = await findByIdAndDelete(req.params.id);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
         res.json({ message: "Order deleted successfully" });
@@ -292,4 +295,4 @@ router.delete("/:id", async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

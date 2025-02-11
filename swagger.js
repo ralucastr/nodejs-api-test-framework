@@ -1,19 +1,31 @@
-const swaggerJsDoc = require("swagger-jsdoc");
-const swaggerUi = require("swagger-ui-express");
+import swaggerJsDoc from "swagger-jsdoc";
+import swaggerUi from "swagger-ui-express";
 
-const swaggerOptions = {
-    swaggerDefinition: {
-        openapi: "3.0.0",
-        info: {
-            title: "Client API",
-            version: "1.0.0",
-            description: "API for managing clients",
-        },
-        servers: [{ url: "http://localhost:5000" }],
+const swaggerDefinition = {
+    openapi: "3.0.0",
+    info: {
+        title: "API Documentation",
+        version: "1.0.0",
+        description: "API for authentication, clients, and orders",
     },
-    apis: ["./routes/*.js"], // Path to API docs
+    components: {
+        securitySchemes: {
+            BearerAuth: {  // 👈 Define JWT authentication
+                type: "http",
+                scheme: "bearer",
+                bearerFormat: "JWT",
+            },
+        },
+    },
+    security: [{ BearerAuth: [] }], // 👈 Apply globally (optional)
 };
 
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
+const options = {
+    swaggerDefinition,
+    apis: ["./routes/*.js"]
+};
 
-module.exports = { swaggerUi, swaggerDocs };
+const swaggerDocs = swaggerJsDoc(options);
+
+export default { swaggerUi, swaggerDocs };
+// The swaggerDocs object is passed to the swaggerUi middleware in index.js to serve the Swagger UI.
